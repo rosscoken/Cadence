@@ -371,9 +371,10 @@ async function loadCachedState(){const c=await dbGet('state'),d=await dbGet('dir
 // ═══════════════ FILE SYSTEM ═══════════════
 async function ensurePermission(h){return(await h.queryPermission({mode:'readwrite'}))==='granted'||(await h.requestPermission({mode:'readwrite'}))==='granted';}
 async function pickFolder(){if(!hasFSAccess)return;try{dirHandle=await window.showDirectoryPicker({mode:'readwrite',id:'tasktracker'});await dbSet('dirHandle',dirHandle);await readFromFile();currentView='app';render();}catch(e){if(e.name!=='AbortError')console.error(e);}}
-async function readFromFile(){if(!dirHandle)return;syncStatus='syncing';render();try{if(!await ensurePermission(dirHandle)){syncStatus='error';render();return;}let fh;try{fh=await dirHandle.getFileHandle(SYNC_FILE);}catch{await writeToFile();return;}const text=await(await fh.getFile()).text();if(!text.trim()){await writeToFile();return;}const data=JSON.parse(text);if(validateData(data)){mergeState(data);S.lastSync=new Date().toISOString();syncStatus='synced';await cacheState();}else syncStatus='error';}catch(e){console.error(e);syncStatus='error';}render();}
+function softRender(){if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();}
+async function readFromFile(){if(!dirHandle)return;syncStatus='syncing';softRender();try{if(!await ensurePermission(dirHandle)){syncStatus='error';softRender();return;}let fh;try{fh=await dirHandle.getFileHandle(SYNC_FILE);}catch{await writeToFile();return;}const text=await(await fh.getFile()).text();if(!text.trim()){await writeToFile();return;}const data=JSON.parse(text);if(validateData(data)){mergeState(data);S.lastSync=new Date().toISOString();syncStatus='synced';await cacheState();}else syncStatus='error';}catch(e){console.error(e);syncStatus='error';}softRender();}
 let writeDepth=0;
-async function writeToFile(){if(!dirHandle||writeDepth>0)return;writeDepth++;syncStatus='syncing';render();try{if(!await ensurePermission(dirHandle)){syncStatus='error';render();writeDepth--;return;}const fh=await dirHandle.getFileHandle(SYNC_FILE,{create:true}),w=await fh.createWritable();await w.write(JSON.stringify(S,null,2));await w.close();S.lastSync=new Date().toISOString();syncStatus='synced';await cacheState();}catch(e){console.error(e);syncStatus='error';}writeDepth--;render();}
+async function writeToFile(){if(!dirHandle||writeDepth>0)return;writeDepth++;syncStatus='syncing';softRender();try{if(!await ensurePermission(dirHandle)){syncStatus='error';softRender();writeDepth--;return;}const fh=await dirHandle.getFileHandle(SYNC_FILE,{create:true}),w=await fh.createWritable();await w.write(JSON.stringify(S,null,2));await w.close();S.lastSync=new Date().toISOString();syncStatus='synced';await cacheState();}catch(e){console.error(e);syncStatus='error';}writeDepth--;softRender();}
 function scheduleWrite(){clearTimeout(syncTimer);if(dirHandle)syncTimer=setTimeout(()=>writeToFile(),1000);else{unsavedEdits++;lastEditTime=Date.now();cacheState();}}
 
 // Mobile file I/O
@@ -904,8 +905,8 @@ window.addEventListener('beforeunload',e=>{if(isMobile&&unsavedEdits>0){e.preven
   if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
   if(hasFSAccess){const r=await dbGet('dirHandle');if(r){try{if((await r.queryPermission({mode:'readwrite'}))==='granted'){dirHandle=r;currentView='app';render();await readFromFile();render();return;}}catch{}dirHandle=r;currentView='app';render();return;}currentView='setup';render();}else{currentView=hadCache?'app':'setup';render();}
 })();
-setInterval(()=>render(),15000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&dirHandle)readFromFile().then(render);});
+setInterval(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();},15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&dirHandle)readFromFile().then(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();});});
 </script>
 </body>
 </html>
