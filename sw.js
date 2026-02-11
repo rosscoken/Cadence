@@ -1,9 +1,9 @@
-const CACHE = 'cadence-v1';
+const CACHE = 'cadence-v2';
 
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE)
-      .then(c => c.addAll(['./', './index.html']))
+      .then(c => c.addAll(['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png']))
       .then(() => self.skipWaiting())
   );
 });
@@ -18,7 +18,6 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  // Network first, cache fallback
   e.respondWith(
     fetch(e.request)
       .then(r => {
