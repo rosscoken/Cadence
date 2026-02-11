@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data:; font-src https://fonts.gstatic.com; worker-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data:; font-src https://fonts.gstatic.com; worker-src 'self'">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0F1117">
+<link rel="manifest" href="manifest.json">
 <title>Cadence</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -22,6 +23,31 @@
   html{height:-webkit-fill-available}
   body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;min-height:100dvh;display:flex;justify-content:center;padding:calc(20px + var(--sat)) 16px calc(20px + var(--sab));-webkit-tap-highlight-color:transparent;overflow-x:hidden;transition:background .3s}
   .ctr{width:100%;max-width:540px;display:flex;flex-direction:column;gap:14px}
+
+  /* Desktop responsive */
+  @media(min-width:700px){
+    .ctr{max-width:720px}
+    .stats-bar{gap:14px}
+    .stat-card{padding:14px 18px}
+    .ach-grid{gap:10px}
+    .ach{min-width:180px;padding:10px 14px}
+    .analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .analytics-grid>.analytics-section{margin-bottom:0}
+    .analytics-full{grid-column:1/-1}
+    .heatmap{gap:3px}
+    .hm-cell{width:16px;height:16px}
+    .hour-chart{height:100px}
+    .dow-chart{height:90px}
+    .trend-chart{height:80px}
+    .ti-row{padding:14px 18px}
+    .add-box{padding:12px 16px}
+    .ai{padding:12px 16px;font-size:16px}
+    .nem-card{padding:14px 18px}
+  }
+  @media(min-width:1000px){
+    .ctr{max-width:860px}
+    .ach{min-width:200px}
+  }
   .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:4px 0;gap:8px}
   .ttl{font-size:24px;font-weight:700;letter-spacing:-0.02em;color:#F0F1F5;line-height:1.2}
   .dte{font-size:13px;color:var(--dm);margin-top:4px}
@@ -124,6 +150,8 @@
   /* Achievements */
   .panel{background:var(--sf2);border:1px solid var(--bd2);border-radius:var(--r);padding:16px;animation:si .2s ease}
   .panel-title{font-size:14px;font-weight:700;color:var(--tx);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .panel-close{width:24px;height:24px;border-radius:6px;border:1px solid var(--bd2);background:transparent;color:var(--dm);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s;flex-shrink:0}
+  .panel-close:hover{background:var(--bd);color:var(--mt)}
   .ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:6px}
   .ach{padding:6px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);display:flex;align-items:center;gap:6px;font-size:12px}
   .ach.locked{opacity:.3;filter:grayscale(1)}
@@ -575,7 +603,7 @@ function renderNemesisBoard() {
   const active=S.nemeses.filter(n=>!n.slain).sort((a,b)=>getNemLevel(b)-getNemLevel(a)||b.appearances-a.appearances);
   const slain=S.nemeses.filter(n=>n.slain).sort((a,b)=>(b.slainAt||'').localeCompare(a.slainAt||''));
 
-  let html=`<div class="panel"><div class="panel-title"><span>☠️ Nemesis Board</span><span style="font-size:12px;color:var(--dm);font-family:'JetBrains Mono',monospace">${active.length} active</span></div>`;
+  let html=`<div class="panel"><div class="panel-title"><span>☠️ Nemesis Board <span style="font-size:12px;color:var(--dm);font-family:'JetBrains Mono',monospace;font-weight:400">${active.length} active</span></span><button class="panel-close" data-action="nemeses">✕</button></div>`;
   html+=`<div class="nem-board">`;
   if(!active.length&&!slain.length){html+=`<div style="text-align:center;padding:24px;color:var(--ft);font-size:13px">No nemeses yet. Let a task go overdue or keep re-adding the same one...</div>`;}
   for(const n of active){
@@ -824,8 +852,8 @@ function render(){
   // Panels
   let settingsHTML='',achHTML='',analyticsHTML='';
   if(showSettings){const opts=sel=>Array.from({length:24},(_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${fmt(i)}</option>`).join('');
-    settingsHTML=`<div class="sp"><div class="sr"><span class="slab">Work hours</span><div style="display:flex;align-items:center;gap:8px"><select class="sel" id="selStart">${opts(S.settings.workStart)}</select><span style="color:var(--mt);font-size:13px">to</span><select class="sel" id="selEnd">${opts(S.settings.workEnd)}</select></div></div><div class="sr"><span class="slab">Theme</span><div class="theme-grid">${THEMES.map(t=>{const unlocked=isThemeUnlocked(t),active=S.stats.theme===t.id;return`<div class="theme-swatch ${active?'active':''} ${unlocked?'':'locked'}" data-action="set-theme" data-theme="${t.id}" title="${t.name}${unlocked?'':' (Lv'+t.lvReq+(t.pReq?' P'+t.pReq:'')+')'}"><span>${t.icon}</span>${unlocked?'':`<span class="lock">🔒</span>`}</div>`;}).join('')}</div></div>${(S.recurring||[]).length?`<div class="sr" style="flex-direction:column;align-items:stretch"><span class="slab">Recurring Tasks</span><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">${S.recurring.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:6px;background:var(--sf);border:1px solid var(--bd)"><div style="min-width:0"><span style="font-size:12px;color:var(--tx2)">${esc(r.text)}</span><span class="recur-chip" style="margin-left:6px">${r.schedule}</span></div><button class="edit-btn danger" data-action="remove-recurring" data-recurid="${esc(r.id)}" style="padding:2px 8px;font-size:10px">✕</button></div>`).join('')}</div></div>`:''}<div class="sr"><span class="slab">Stats</span><span class="stat-sub">${S.stats.totalCompleted} completed · ${S.stats.achievements.length}/${ACHIEVEMENTS.length} achievements</span></div>${canPrestige?`<button class="prestige-btn" data-action="prestige">⭐ PRESTIGE${(S.stats.prestige||0)>0?' (×'+((S.stats.prestige||0)+1)+')':''}</button>`:''}<div class="sr"><span class="slab">Sync</span><div style="display:flex;gap:8px;flex-wrap:wrap">${hasFSAccess&&dirHandle?'<button class="file-btn" data-action="change-folder">📂 Change</button>':''}${isMobile?'<button class="file-btn" data-action="pick-file">📂 Load</button><button class="file-btn" data-action="save-file">💾 Save</button>':''}<button class="file-btn" data-action="disconnect" style="color:var(--red)">✕ Reset</button></div></div></div>`;}
-  if(showAchievements){achHTML=`<div class="panel"><div class="panel-title"><span>🏆 Achievements</span><span style="font-size:12px;color:var(--dm);font-family:'JetBrains Mono',monospace">${S.stats.achievements.length}/${ACHIEVEMENTS.length}</span></div><div class="ach-grid">${ACHIEVEMENTS.map(a=>`<div class="ach ${S.stats.achievements.includes(a.id)?'':'locked'}"><span class="ach-icon">${a.icon}</span><div><span class="ach-name">${esc(a.name)}</span><br><span class="ach-desc">${esc(a.desc)}</span></div></div>`).join('')}</div></div>`;}
+    settingsHTML=`<div class="sp"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:14px;font-weight:700;color:var(--tx)">⚙ Settings</span><button class="panel-close" data-action="settings">✕</button></div><div class="sr"><span class="slab">Work hours</span><div style="display:flex;align-items:center;gap:8px"><select class="sel" id="selStart">${opts(S.settings.workStart)}</select><span style="color:var(--mt);font-size:13px">to</span><select class="sel" id="selEnd">${opts(S.settings.workEnd)}</select></div></div><div class="sr"><span class="slab">Theme</span><div class="theme-grid">${THEMES.map(t=>{const unlocked=isThemeUnlocked(t),active=S.stats.theme===t.id;return`<div class="theme-swatch ${active?'active':''} ${unlocked?'':'locked'}" data-action="set-theme" data-theme="${t.id}" title="${t.name}${unlocked?'':' (Lv'+t.lvReq+(t.pReq?' P'+t.pReq:'')+')'}"><span>${t.icon}</span>${unlocked?'':`<span class="lock">🔒</span>`}</div>`;}).join('')}</div></div>${(S.recurring||[]).length?`<div class="sr" style="flex-direction:column;align-items:stretch"><span class="slab">Recurring Tasks</span><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">${S.recurring.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:6px;background:var(--sf);border:1px solid var(--bd)"><div style="min-width:0"><span style="font-size:12px;color:var(--tx2)">${esc(r.text)}</span><span class="recur-chip" style="margin-left:6px">${r.schedule}</span></div><button class="edit-btn danger" data-action="remove-recurring" data-recurid="${esc(r.id)}" style="padding:2px 8px;font-size:10px">✕</button></div>`).join('')}</div></div>`:''}<div class="sr"><span class="slab">Stats</span><span class="stat-sub">${S.stats.totalCompleted} completed · ${S.stats.achievements.length}/${ACHIEVEMENTS.length} achievements</span></div>${canPrestige?`<button class="prestige-btn" data-action="prestige">⭐ PRESTIGE${(S.stats.prestige||0)>0?' (×'+((S.stats.prestige||0)+1)+')':''}</button>`:''}<div class="sr"><span class="slab">Sync</span><div style="display:flex;gap:8px;flex-wrap:wrap">${hasFSAccess&&dirHandle?'<button class="file-btn" data-action="change-folder">📂 Change</button>':''}${isMobile?'<button class="file-btn" data-action="pick-file">📂 Load</button><button class="file-btn" data-action="save-file">💾 Save</button>':''}<button class="file-btn" data-action="disconnect" style="color:var(--red)">✕ Reset</button></div></div></div>`;}
+  if(showAchievements){achHTML=`<div class="panel"><div class="panel-title"><span>🏆 Achievements <span style="font-size:12px;color:var(--dm);font-family:'JetBrains Mono',monospace;font-weight:400">${S.stats.achievements.length}/${ACHIEVEMENTS.length}</span></span><button class="panel-close" data-action="achievements">✕</button></div><div class="ach-grid">${ACHIEVEMENTS.map(a=>`<div class="ach ${S.stats.achievements.includes(a.id)?'':'locked'}"><span class="ach-icon">${a.icon}</span><div><span class="ach-name">${esc(a.name)}</span><br><span class="ach-desc">${esc(a.desc)}</span></div></div>`).join('')}</div></div>`;}
   if(showAnalytics){
     const a=computeAnalytics();const insights=generateInsights(a);
     const hasHistory=Object.keys(S.stats.dailyHistory||{}).length>0;
@@ -833,8 +861,9 @@ function render(){
     const hasDow=a.dowTotal.some(v=>v>0);
     const hasWeekly=a.weeklyRates.some(r=>r!==null);
     const emptyMsg='<div style="text-align:center;padding:16px 0;font-size:12px;color:var(--ft)">Complete some tasks to see data here</div>';
-    analyticsHTML=`<div class="panel"><div class="panel-title">📊 Analytics</div>
-    <div class="analytics-section"><span class="slab">12-Week Activity</span>${hasHistory?`<div class="heatmap" style="margin-top:8px">${renderHeatmap()}</div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;align-items:center"><span style="font-size:9px;color:var(--ft)">Less</span><div class="hm-cell" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l1" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l2" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l3" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l4" style="width:10px;height:10px;display:inline-block"></div><span style="font-size:9px;color:var(--ft)">More</span></div>`:emptyMsg}</div>
+    analyticsHTML=`<div class="panel"><div class="panel-title"><span>📊 Analytics</span><button class="panel-close" data-action="analytics">✕</button></div>
+    <div class="analytics-grid">
+    <div class="analytics-section analytics-full"><span class="slab">12-Week Activity</span>${hasHistory?`<div class="heatmap" style="margin-top:8px">${renderHeatmap()}</div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;align-items:center"><span style="font-size:9px;color:var(--ft)">Less</span><div class="hm-cell" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l1" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l2" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l3" style="width:10px;height:10px;display:inline-block"></div><div class="hm-cell l4" style="width:10px;height:10px;display:inline-block"></div><span style="font-size:9px;color:var(--ft)">More</span></div>`:emptyMsg}</div>
     <div class="analytics-section"><span class="slab">Completion by Hour</span>${hasHours?`<div class="hour-chart">${renderHourChart()}</div>`:emptyMsg}</div>
     <div class="analytics-section"><span class="slab">Day of Week</span>${hasDow?`<div class="dow-chart">${renderDowChart(a)}</div>`:emptyMsg}</div>
     <div class="analytics-section"><span class="slab">Weekly Completion Rate (12 wk)</span>${hasWeekly?`<div class="trend-chart">${renderWeeklyTrend(a)}</div><div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:9px;color:var(--ft)">12 weeks ago</span><span style="font-size:9px;color:var(--ft)">This week</span></div>`:emptyMsg}</div>
@@ -848,8 +877,8 @@ function render(){
     <div class="analytics-stat"><span style="font-size:12px;color:var(--dm)">Nemeses Slain</span><span style="font-size:12px;font-weight:700;color:var(--tx)">🗡️ ${a.slainNems}</span></div>
     <div class="analytics-stat"><span style="font-size:12px;color:var(--dm)">Prestige</span><span style="font-size:12px;font-weight:700;color:var(--amber)">${'⭐'.repeat(S.stats.prestige||0)||'—'}</span></div>
     </div>
-    ${insights.length?`<div class="analytics-section"><span class="slab">Insights</span><div style="margin-top:8px">${insights.map(i=>`<div class="insight"><span class="insight-icon">${i.icon}</span>${i.text}</div>`).join('')}</div></div>`:''}
-    </div>`;}
+    ${insights.length?`<div class="analytics-section analytics-full"><span class="slab">Insights</span><div style="margin-top:8px">${insights.map(i=>`<div class="insight"><span class="insight-icon">${i.icon}</span>${i.text}</div>`).join('')}</div></div>`:''}
+    </div></div>`;}
   let nemHTML='';
   if(showNemeses)nemHTML=renderNemesisBoard();
 
@@ -897,10 +926,6 @@ window.addEventListener('beforeunload',e=>{if(isMobile&&unsavedEdits>0){e.preven
   generateRecurringTasks();
   if(S.stats.lastCompletionDay){const d=Math.floor((new Date()-new Date(S.stats.lastCompletionDay+'T12:00:00'))/86400000);if(d>1)S.stats.currentStreak=0;}
   const tasks=getTodayTasks();bossDefeatedToday=tasks.length>0&&tasks.every(t=>t.done)&&isBossDay();
-  // PWA manifest
-  const manifest={name:'Cadence',short_name:'Cadence',start_url:'.',display:'standalone',background_color:'#0F1117',theme_color:'#0F1117',icons:[{src:'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>',sizes:'any',type:'image/svg+xml'}]};
-  const mBlob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
-  const mLink=document.createElement('link');mLink.rel='manifest';mLink.href=URL.createObjectURL(mBlob);document.head.appendChild(mLink);
   // Service worker
   if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
   if(hasFSAccess){const r=await dbGet('dirHandle');if(r){try{if((await r.queryPermission({mode:'readwrite'}))==='granted'){dirHandle=r;currentView='app';render();await readFromFile();render();return;}}catch{}dirHandle=r;currentView='app';render();return;}currentView='setup';render();}else{currentView=hadCache?'app':'setup';render();}
