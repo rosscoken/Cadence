@@ -1,4 +1,4 @@
-const CACHE = 'cadence-v2';
+const CACHE = 'cadence-v3';
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -26,5 +26,19 @@ self.addEventListener('fetch', e => {
         return r;
       })
       .catch(() => caches.match(e.request))
+  );
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cls => {
+      for (const c of cls) {
+        if (c.url.includes('index.html') || c.url.endsWith('/')) {
+          return c.focus();
+        }
+      }
+      return clients.openWindow(e.notification.data?.url || './');
+    })
   );
 });
