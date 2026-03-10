@@ -427,7 +427,7 @@ async function saveFileToOneDrive(){const c=JSON.stringify(S,null,2),file=new Fi
 // ═══════════════ VALIDATION / MERGE ═══════════════
 function validateData(d){if(!d||typeof d!=='object')return false;if(d.tasks){for(const[k,v]of Object.entries(d.tasks)){if(!isValidDate(k)||!Array.isArray(v))return false;for(const t of v){if(!t||typeof t.text!=='string'||t.text.length>MAX_TASK_LEN||typeof t.done!=='boolean')return false;}}}return true;}
 function sanitizeTask(t,fb){return{id:isValidId(t.id)?t.id:uid(),text:String(t.text||'').slice(0,MAX_TASK_LEN),desc:String(t.desc||'').slice(0,MAX_DESC_LEN),dueDate:isValidDate(t.dueDate)?t.dueDate:(isValidDate(fb)?fb:todayKey()),done:Boolean(t.done),createdAt:t.createdAt||new Date().toISOString(),completedAt:t.completedAt||null,recurId:t.recurId||null};}
-function mergeState(remote){const allDates=new Set([...Object.keys(S.tasks),...Object.keys(remote.tasks||{})]);for(const date of allDates){if(!isValidDate(date))continue;const local=S.tasks[date]||[],rem=(remote.tasks?.[date]||[]).map(t=>sanitizeTask(t,date));const byId=new Map();for(const t of[...rem,...local]){const e=byId.get(t.id);if(!e||t.done)byId.set(t.id,t);}S.tasks[date]=Array.from(byId.values());}if(remote.settings){const rs=remote.settings;S.settings={workStart:typeof rs.workStart==='number'?Math.max(0,Math.min(23,rs.workStart)):DFLT.workStart,workEnd:typeof rs.workEnd==='number'?Math.max(0,Math.min(23,rs.workEnd)):DFLT.workEnd};}if(remote.stats){const rs=remote.stats;S.stats.xp=Math.max(S.stats.xp,rs.xp||0);S.stats.totalCompleted=Math.max(S.stats.totalCompleted,rs.totalCompleted||0);S.stats.currentStreak=Math.max(S.stats.currentStreak,rs.currentStreak||0);S.stats.bestStreak=Math.max(S.stats.bestStreak,rs.bestStreak||0);S.stats.bestCombo=Math.max(S.stats.bestCombo||0,rs.bestCombo||0);S.stats.lastCompletionDay=rs.lastCompletionDay||S.stats.lastCompletionDay;S.stats.achievements=[...new Set([...S.stats.achievements,...(rs.achievements||[])])];S.stats.dailyHistory={...rs.dailyHistory,...S.stats.dailyHistory};S.stats.prestige=Math.max(S.stats.prestige||0,rs.prestige||0);S.stats.theme=rs.theme||S.stats.theme;S.stats.completionHours={...rs.completionHours,...S.stats.completionHours};}
+function mergeState(remote){const allDates=new Set([...Object.keys(S.tasks),...Object.keys(remote.tasks||{})]);for(const date of allDates){if(!isValidDate(date))continue;const local=S.tasks[date]||[],rem=(remote.tasks?.[date]||[]).map(t=>sanitizeTask(t,date));const byId=new Map();for(const t of[...rem,...local]){const e=byId.get(t.id);if(!e||t.done)byId.set(t.id,t);}S.tasks[date]=Array.from(byId.values());}if(remote.settings){const rs=remote.settings;S.settings={workStart:typeof rs.workStart==='number'?Math.max(0,Math.min(23,rs.workStart)):DFLT.workStart,workEnd:typeof rs.workEnd==='number'?Math.max(0,Math.min(23,rs.workEnd)):DFLT.workEnd,notifMorning:typeof rs.notifMorning==='boolean'?rs.notifMorning:S.settings.notifMorning,notifOverdue:typeof rs.notifOverdue==='boolean'?rs.notifOverdue:S.settings.notifOverdue,notifStreakProtect:typeof rs.notifStreakProtect==='boolean'?rs.notifStreakProtect:S.settings.notifStreakProtect,notifIdleNudge:typeof rs.notifIdleNudge==='boolean'?rs.notifIdleNudge:S.settings.notifIdleNudge};}if(remote.stats){const rs=remote.stats;S.stats.xp=Math.max(S.stats.xp,rs.xp||0);S.stats.totalCompleted=Math.max(S.stats.totalCompleted,rs.totalCompleted||0);S.stats.currentStreak=Math.max(S.stats.currentStreak,rs.currentStreak||0);S.stats.bestStreak=Math.max(S.stats.bestStreak,rs.bestStreak||0);S.stats.bestCombo=Math.max(S.stats.bestCombo||0,rs.bestCombo||0);S.stats.lastCompletionDay=rs.lastCompletionDay||S.stats.lastCompletionDay;S.stats.achievements=[...new Set([...S.stats.achievements,...(rs.achievements||[])])];S.stats.dailyHistory={...rs.dailyHistory,...S.stats.dailyHistory};S.stats.prestige=Math.max(S.stats.prestige||0,rs.prestige||0);S.stats.theme=rs.theme||S.stats.theme;S.stats.completionHours={...rs.completionHours,...S.stats.completionHours};}
   // Merge nemeses
   if(remote.nemeses){if(!S.nemeses)S.nemeses=[];const byId=new Map();for(const n of S.nemeses)byId.set(n.id,n);for(const n of remote.nemeses){const e=byId.get(n.id);if(!e)byId.set(n.id,n);else{e.appearances=Math.max(e.appearances||0,n.appearances||0);e.maxOverdueDays=Math.max(e.maxOverdueDays||0,n.maxOverdueDays||0);if(n.slain&&!e.slain){e.slain=true;e.slainAt=n.slainAt;}}}S.nemeses=Array.from(byId.values());}
   // Merge recurring
@@ -813,7 +813,7 @@ const ICO={
 
 // ═══════════════ NOTIFICATIONS ═══════════════
 const NOTIF_SUPPORT='Notification' in window;
-let notifLastMorning=null,notifLastOverdue=null,notifLastStreak=null,notifLastIdle=null;
+let notifLastMorning=null,notifLastOverdue=null,notifLastStreak=null,notifLastIdle=null,swReg=null;
 
 function notifPermission(){return NOTIF_SUPPORT?Notification.permission:'denied';}
 async function requestNotifPermission(){
@@ -822,11 +822,11 @@ async function requestNotifPermission(){
   render();return p;
 }
 
-async function showNotif(title,body,tag,data){
+function showNotif(title,body,tag,data){
   if(notifPermission()!=='granted')return;
+  const opts={body,icon:'./icon-192.png',badge:'./icon-192.png',tag,data:{url:'./',...data},renotify:true};
   try{
-    const reg=await navigator.serviceWorker?.ready;
-    if(reg){reg.showNotification(title,{body,icon:'./icon-192.png',badge:'./icon-192.png',tag,data:{url:'./',...data},renotify:true});}
+    if(swReg){swReg.showNotification(title,opts);}
     else{new Notification(title,{body,icon:'./icon-192.png',tag});}
   }catch{try{new Notification(title,{body,icon:'./icon-192.png',tag});}catch{}}
 }
@@ -834,7 +834,7 @@ async function showNotif(title,body,tag,data){
 function checkNotifications(){
   if(notifPermission()!=='granted'||currentView!=='app')return;
   const now=new Date(),h=now.getHours(),m=now.getMinutes(),today=todayKey(),tasks=getTodayTasks();
-  const inc=tasks.filter(t=>!t.done),done=tasks.filter(t=>t.done);
+  const inc=tasks.filter(t=>!t.done);
   const ws=S.settings.workStart,we=S.settings.workEnd;
 
   // Morning briefing: at work start hour
@@ -904,7 +904,7 @@ document.getElementById('app').addEventListener('click',e=>{const btn=e.target.c
   case'prestige':doPrestige();break;
   case'set-theme':{const tid=btn.dataset.theme;const t=THEMES.find(x=>x.id===tid);if(t&&isThemeUnlocked(t)){S.stats.theme=tid;applyTheme(tid);scheduleWrite();render();}break;}
   case'notif-permission':requestNotifPermission();break;
-  case'notif-toggle':{const k=btn.dataset.key;if(S.settings[k]!==undefined){S.settings[k]=!S.settings[k];scheduleWrite();render();}break;}
+  case'notif-toggle':{const k=btn.dataset.key;if(typeof S.settings[k]==='boolean'){S.settings[k]=!S.settings[k];scheduleWrite();render();}break;}
   case'disconnect':dirHandle=null;S={tasks:{},settings:S.settings,stats:S.stats,nemeses:S.nemeses||[],recurring:S.recurring||[],lastSync:null};syncStatus='idle';currentView='setup';dbSet('dirHandle',null);render();break;
 }});
 
@@ -1018,10 +1018,10 @@ window.addEventListener('beforeunload',e=>{if(isMobile&&unsavedEdits>0){e.preven
   if(S.stats.lastCompletionDay){const d=Math.floor((new Date()-new Date(S.stats.lastCompletionDay+'T12:00:00'))/86400000);if(d>1)S.stats.currentStreak=0;}
   const tasks=getTodayTasks();bossDefeatedToday=tasks.length>0&&tasks.every(t=>t.done)&&isBossDay();
   // Service worker
-  if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').then(r=>{swReg=r;}).catch(()=>{});}
   if(hasFSAccess){const r=await dbGet('dirHandle');if(r){try{if((await r.queryPermission({mode:'readwrite'}))==='granted'){dirHandle=r;currentView='app';render();await readFromFile();render();return;}}catch{}dirHandle=r;currentView='app';render();return;}currentView='setup';render();}else{currentView=hadCache?'app':'setup';render();}
 })();
-setInterval(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();checkNotifications();},15000);
+setInterval(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();if(!document.hidden)checkNotifications();},15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&dirHandle)readFromFile().then(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();});});
 </script>
 </body>
