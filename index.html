@@ -408,8 +408,8 @@ function showToast(m){toastMsg=m;render();clearTimeout(toastTimer);toastTimer=se
 function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('kv'))r.result.createObjectStore('kv');};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
 async function dbGet(k){const db=await openDB();return new Promise(r=>{const g=db.transaction('kv','readonly').objectStore('kv').get(k);g.onsuccess=()=>r(g.result??null);g.onerror=()=>r(null);});}
 async function dbSet(k,v){const db=await openDB();return new Promise(r=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>r();tx.onerror=()=>r();});}
-async function cacheState(){await dbSet('state',JSON.parse(JSON.stringify(S)));await dbSet('dirty',{unsavedEdits,lastEditTime});}
-async function loadCachedState(){const c=await dbGet('state'),d=await dbGet('dirty');if(c?.tasks){S={tasks:c.tasks||{},settings:{...DFLT,...c.settings},stats:{xp:0,totalCompleted:0,currentStreak:0,bestStreak:0,bestCombo:0,lastCompletionDay:null,achievements:[],dailyHistory:{},comboCount:0,lastComboTime:null,prestige:0,theme:'midnight',completionHours:{},...c.stats},nemeses:c.nemeses||[],recurring:c.recurring||[],lastSync:c.lastSync||null};if(d){unsavedEdits=d.unsavedEdits||0;lastEditTime=d.lastEditTime||null;}return true;}return false;}
+async function cacheState(){await dbSet('state',JSON.parse(JSON.stringify(S)));await dbSet('dirty',{unsavedEdits,lastEditTime});await dbSet('notifSent',notifSent);}
+async function loadCachedState(){const c=await dbGet('state'),d=await dbGet('dirty'),ns=await dbGet('notifSent');if(ns)notifSent={morning:ns.morning||null,overdue:ns.overdue||null,streak:ns.streak||null,idle:ns.idle||null};if(c?.tasks){S={tasks:c.tasks||{},settings:{...DFLT,...c.settings},stats:{xp:0,totalCompleted:0,currentStreak:0,bestStreak:0,bestCombo:0,lastCompletionDay:null,achievements:[],dailyHistory:{},comboCount:0,lastComboTime:null,prestige:0,theme:'midnight',completionHours:{},...c.stats},nemeses:c.nemeses||[],recurring:c.recurring||[],lastSync:c.lastSync||null};if(d){unsavedEdits=d.unsavedEdits||0;lastEditTime=d.lastEditTime||null;}return true;}return false;}
 
 // ═══════════════ FILE SYSTEM ═══════════════
 async function ensurePermission(h){return(await h.queryPermission({mode:'readwrite'}))==='granted'||(await h.requestPermission({mode:'readwrite'}))==='granted';}
@@ -813,7 +813,9 @@ const ICO={
 
 // ═══════════════ NOTIFICATIONS ═══════════════
 const NOTIF_SUPPORT='Notification' in window;
-let notifLastMorning=null,notifLastOverdue=null,notifLastStreak=null,notifLastIdle=null,swReg=null;
+let swReg=null;
+// Dedup state — persisted to IndexedDB via cacheState
+let notifSent={morning:null,overdue:null,streak:null,idle:null};
 
 function notifPermission(){return NOTIF_SUPPORT?Notification.permission:'denied';}
 async function requestNotifPermission(){
@@ -825,22 +827,24 @@ async function requestNotifPermission(){
 function showNotif(title,body,tag,data){
   if(notifPermission()!=='granted')return;
   const opts={body,icon:'./icon-192.png',badge:'./icon-192.png',tag,data:{url:'./',...data},renotify:true};
+  const fallback=()=>{try{new Notification(title,{body,icon:'./icon-192.png',tag});}catch{}};
   try{
-    if(swReg){swReg.showNotification(title,opts);}
-    else{new Notification(title,{body,icon:'./icon-192.png',tag});}
-  }catch{try{new Notification(title,{body,icon:'./icon-192.png',tag});}catch{}}
+    if(swReg){swReg.showNotification(title,opts).catch(fallback);}
+    else{fallback();}
+  }catch{fallback();}
 }
 
 function checkNotifications(){
   if(notifPermission()!=='granted'||currentView!=='app')return;
+  const snap=JSON.stringify(notifSent);
   const now=new Date(),h=now.getHours(),m=now.getMinutes(),today=todayKey(),tasks=getTodayTasks();
   const inc=tasks.filter(t=>!t.done);
   const ws=S.settings.workStart,we=S.settings.workEnd;
 
   // Morning briefing: at work start hour
-  if(S.settings.notifMorning&&h===ws&&m<16&&notifLastMorning!==today){
+  if(S.settings.notifMorning&&h===ws&&m<16&&notifSent.morning!==today){
     if(tasks.length>0){
-      notifLastMorning=today;
+      notifSent.morning=today;
       const overdue=inc.filter(t=>t.dueDate&&t.dueDate<today).length;
       let body=`You have ${tasks.length} quest${tasks.length>1?'s':''} today.`;
       if(overdue)body+=` ${overdue} overdue!`;
@@ -852,20 +856,20 @@ function checkNotifications(){
   // Overdue reminders: check at noon and 3pm
   if(S.settings.notifOverdue&&(h===12||h===15)&&m<16){
     const overdueKey=today+'-'+h;
-    if(notifLastOverdue!==overdueKey){
+    if(notifSent.overdue!==overdueKey){
       const overdue=inc.filter(t=>t.dueDate&&t.dueDate<today);
       if(overdue.length>0){
-        notifLastOverdue=overdueKey;
+        notifSent.overdue=overdueKey;
         showNotif(`${overdue.length} overdue quest${overdue.length>1?'s':''}`,
-          `"${overdue[0].text}"${overdue.length>1?` and ${overdue.length-1} more`:''} need${overdue.length===1?'s':''} attention.`,'overdue');
+          `${overdue.length} quest${overdue.length>1?'s':''} past due. Open Cadence to take action.`,'overdue');
       }
     }
   }
 
   // Streak protection: 1 hour before work end
-  if(S.settings.notifStreakProtect&&h===we-1&&m>=30&&m<46&&notifLastStreak!==today){
+  if(S.settings.notifStreakProtect&&h===(we+23)%24&&m>=30&&m<46&&notifSent.streak!==today){
     if(inc.length>0&&S.stats.currentStreak>0){
-      notifLastStreak=today;
+      notifSent.streak=today;
       showNotif('Streak in danger! 🔥',
         `${inc.length} quest${inc.length>1?'s':''} left. Don't break your ${S.stats.currentStreak}-day streak!`,'streak');
     }
@@ -877,12 +881,13 @@ function checkNotifications(){
     const baseline=Math.max(S.stats.lastComboTime||0,todayWorkStart.getTime());
     const idleMs=Date.now()-baseline;
     const idleHrs=idleMs/3600000;
-    if(idleHrs>=2&&notifLastIdle!==today+'-'+h){
-      notifLastIdle=today+'-'+h;
+    if(idleHrs>=2&&notifSent.idle!==today+'-'+h){
+      notifSent.idle=today+'-'+h;
       const msgs=['Time to get back in the game!','Your tasks miss you.','Quick win? Pick the easiest quest.','Even one task keeps the momentum going.'];
       showNotif('Idle detected 👀',pickRandom(msgs)+` ${inc.length} quest${inc.length>1?'s':''} waiting.`,'idle');
     }
   }
+  if(JSON.stringify(notifSent)!==snap)dbSet('notifSent',notifSent);
 }
 
 // ═══════════════ EVENTS ═══════════════
