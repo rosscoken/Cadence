@@ -197,6 +197,21 @@
   .prestige-btn{padding:10px 20px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;justify-content:center}
   .prestige-btn:hover{background:rgba(245,158,11,.2);box-shadow:0 0 20px rgba(245,158,11,.2)}
 
+  /* Notification toggle */
+  .notif-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-radius:10px;background:var(--sf);border:1px solid var(--bd);cursor:pointer;transition:all .15s;width:100%;text-align:left;font-family:inherit;color:inherit}
+  .notif-toggle:hover{border-color:var(--bd2)}
+  .notif-toggle .notif-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+  .notif-toggle .notif-label{font-size:13px;font-weight:500;color:var(--tx2)}
+  .notif-toggle .notif-desc{font-size:11px;color:var(--ft)}
+  .notif-switch{width:40px;height:22px;border-radius:11px;background:var(--bd2);position:relative;transition:background .2s;flex-shrink:0}
+  .notif-switch.on{background:var(--accent)}
+  .notif-switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:white;transition:transform .2s}
+  .notif-switch.on::after{transform:translateX(18px)}
+  .notif-btn{padding:8px 16px;border-radius:8px;border:1px solid var(--accent);background:rgba(59,130,246,.1);color:var(--accent);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px}
+  .notif-btn:hover{background:rgba(59,130,246,.2)}
+  .notif-btn.granted{border-color:var(--green);color:var(--green);background:rgba(34,197,94,.1)}
+  .notif-btn.denied{border-color:var(--red);color:var(--red);background:rgba(239,68,68,.1);cursor:default}
+
   /* Settings & sync */
   .sp{background:var(--sf2);border:1px solid var(--bd2);border-radius:var(--r);padding:16px;animation:si .2s ease;display:flex;flex-direction:column;gap:14px}
   .sr{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -268,7 +283,7 @@
 <canvas id="confetti"></canvas>
 <div class="ctr" id="app"></div>
 <script>
-const SYNC_FILE='tasks.txt',DFLT={workStart:8,workEnd:18},MAX_TASK_LEN=500,MAX_DESC_LEN=2000,MAX_TASKS_PER_DAY=200,DB_NAME='tt_db',DB_VER=1,COMBO_WINDOW=60000;
+const SYNC_FILE='tasks.txt',DFLT={workStart:8,workEnd:18,notifMorning:true,notifOverdue:true,notifStreakProtect:true,notifIdleNudge:true},MAX_TASK_LEN=500,MAX_DESC_LEN=2000,MAX_TASKS_PER_DAY=200,DB_NAME='tt_db',DB_VER=1,COMBO_WINDOW=60000;
 
 // ═══════════════ THEMES ═══════════════
 const THEMES=[
@@ -393,8 +408,8 @@ function showToast(m){toastMsg=m;render();clearTimeout(toastTimer);toastTimer=se
 function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,DB_VER);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('kv'))r.result.createObjectStore('kv');};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
 async function dbGet(k){const db=await openDB();return new Promise(r=>{const g=db.transaction('kv','readonly').objectStore('kv').get(k);g.onsuccess=()=>r(g.result??null);g.onerror=()=>r(null);});}
 async function dbSet(k,v){const db=await openDB();return new Promise(r=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>r();tx.onerror=()=>r();});}
-async function cacheState(){await dbSet('state',JSON.parse(JSON.stringify(S)));await dbSet('dirty',{unsavedEdits,lastEditTime});}
-async function loadCachedState(){const c=await dbGet('state'),d=await dbGet('dirty');if(c?.tasks){S={tasks:c.tasks||{},settings:{...DFLT,...c.settings},stats:{xp:0,totalCompleted:0,currentStreak:0,bestStreak:0,bestCombo:0,lastCompletionDay:null,achievements:[],dailyHistory:{},comboCount:0,lastComboTime:null,prestige:0,theme:'midnight',completionHours:{},...c.stats},nemeses:c.nemeses||[],recurring:c.recurring||[],lastSync:c.lastSync||null};if(d){unsavedEdits=d.unsavedEdits||0;lastEditTime=d.lastEditTime||null;}return true;}return false;}
+async function cacheState(){await dbSet('state',JSON.parse(JSON.stringify(S)));await dbSet('dirty',{unsavedEdits,lastEditTime});await dbSet('notifSent',notifSent);}
+async function loadCachedState(){const c=await dbGet('state'),d=await dbGet('dirty'),ns=await dbGet('notifSent');if(ns)notifSent={morning:ns.morning||null,overdue:ns.overdue||null,streak:ns.streak||null,idle:ns.idle||null};if(c?.tasks){S={tasks:c.tasks||{},settings:{...DFLT,...c.settings},stats:{xp:0,totalCompleted:0,currentStreak:0,bestStreak:0,bestCombo:0,lastCompletionDay:null,achievements:[],dailyHistory:{},comboCount:0,lastComboTime:null,prestige:0,theme:'midnight',completionHours:{},...c.stats},nemeses:c.nemeses||[],recurring:c.recurring||[],lastSync:c.lastSync||null};if(d){unsavedEdits=d.unsavedEdits||0;lastEditTime=d.lastEditTime||null;}return true;}return false;}
 
 // ═══════════════ FILE SYSTEM ═══════════════
 async function ensurePermission(h){return(await h.queryPermission({mode:'readwrite'}))==='granted'||(await h.requestPermission({mode:'readwrite'}))==='granted';}
@@ -412,7 +427,7 @@ async function saveFileToOneDrive(){const c=JSON.stringify(S,null,2),file=new Fi
 // ═══════════════ VALIDATION / MERGE ═══════════════
 function validateData(d){if(!d||typeof d!=='object')return false;if(d.tasks){for(const[k,v]of Object.entries(d.tasks)){if(!isValidDate(k)||!Array.isArray(v))return false;for(const t of v){if(!t||typeof t.text!=='string'||t.text.length>MAX_TASK_LEN||typeof t.done!=='boolean')return false;}}}return true;}
 function sanitizeTask(t,fb){return{id:isValidId(t.id)?t.id:uid(),text:String(t.text||'').slice(0,MAX_TASK_LEN),desc:String(t.desc||'').slice(0,MAX_DESC_LEN),dueDate:isValidDate(t.dueDate)?t.dueDate:(isValidDate(fb)?fb:todayKey()),done:Boolean(t.done),createdAt:t.createdAt||new Date().toISOString(),completedAt:t.completedAt||null,recurId:t.recurId||null};}
-function mergeState(remote){const allDates=new Set([...Object.keys(S.tasks),...Object.keys(remote.tasks||{})]);for(const date of allDates){if(!isValidDate(date))continue;const local=S.tasks[date]||[],rem=(remote.tasks?.[date]||[]).map(t=>sanitizeTask(t,date));const byId=new Map();for(const t of[...rem,...local]){const e=byId.get(t.id);if(!e||t.done)byId.set(t.id,t);}S.tasks[date]=Array.from(byId.values());}if(remote.settings){const rs=remote.settings;S.settings={workStart:typeof rs.workStart==='number'?Math.max(0,Math.min(23,rs.workStart)):DFLT.workStart,workEnd:typeof rs.workEnd==='number'?Math.max(0,Math.min(23,rs.workEnd)):DFLT.workEnd};}if(remote.stats){const rs=remote.stats;S.stats.xp=Math.max(S.stats.xp,rs.xp||0);S.stats.totalCompleted=Math.max(S.stats.totalCompleted,rs.totalCompleted||0);S.stats.currentStreak=Math.max(S.stats.currentStreak,rs.currentStreak||0);S.stats.bestStreak=Math.max(S.stats.bestStreak,rs.bestStreak||0);S.stats.bestCombo=Math.max(S.stats.bestCombo||0,rs.bestCombo||0);S.stats.lastCompletionDay=rs.lastCompletionDay||S.stats.lastCompletionDay;S.stats.achievements=[...new Set([...S.stats.achievements,...(rs.achievements||[])])];S.stats.dailyHistory={...rs.dailyHistory,...S.stats.dailyHistory};S.stats.prestige=Math.max(S.stats.prestige||0,rs.prestige||0);S.stats.theme=rs.theme||S.stats.theme;S.stats.completionHours={...rs.completionHours,...S.stats.completionHours};}
+function mergeState(remote){const allDates=new Set([...Object.keys(S.tasks),...Object.keys(remote.tasks||{})]);for(const date of allDates){if(!isValidDate(date))continue;const local=S.tasks[date]||[],rem=(remote.tasks?.[date]||[]).map(t=>sanitizeTask(t,date));const byId=new Map();for(const t of[...rem,...local]){const e=byId.get(t.id);if(!e||t.done)byId.set(t.id,t);}S.tasks[date]=Array.from(byId.values());}if(remote.settings){const rs=remote.settings;S.settings={workStart:typeof rs.workStart==='number'?Math.max(0,Math.min(23,rs.workStart)):DFLT.workStart,workEnd:typeof rs.workEnd==='number'?Math.max(0,Math.min(23,rs.workEnd)):DFLT.workEnd,notifMorning:typeof rs.notifMorning==='boolean'?rs.notifMorning:S.settings.notifMorning,notifOverdue:typeof rs.notifOverdue==='boolean'?rs.notifOverdue:S.settings.notifOverdue,notifStreakProtect:typeof rs.notifStreakProtect==='boolean'?rs.notifStreakProtect:S.settings.notifStreakProtect,notifIdleNudge:typeof rs.notifIdleNudge==='boolean'?rs.notifIdleNudge:S.settings.notifIdleNudge};}if(remote.stats){const rs=remote.stats;S.stats.xp=Math.max(S.stats.xp,rs.xp||0);S.stats.totalCompleted=Math.max(S.stats.totalCompleted,rs.totalCompleted||0);S.stats.currentStreak=Math.max(S.stats.currentStreak,rs.currentStreak||0);S.stats.bestStreak=Math.max(S.stats.bestStreak,rs.bestStreak||0);S.stats.bestCombo=Math.max(S.stats.bestCombo||0,rs.bestCombo||0);S.stats.lastCompletionDay=rs.lastCompletionDay||S.stats.lastCompletionDay;S.stats.achievements=[...new Set([...S.stats.achievements,...(rs.achievements||[])])];S.stats.dailyHistory={...rs.dailyHistory,...S.stats.dailyHistory};S.stats.prestige=Math.max(S.stats.prestige||0,rs.prestige||0);S.stats.lastComboTime=Math.max(S.stats.lastComboTime||0,rs.lastComboTime||0)||null;S.stats.theme=rs.theme||S.stats.theme;S.stats.completionHours={...rs.completionHours,...S.stats.completionHours};}
   // Merge nemeses
   if(remote.nemeses){if(!S.nemeses)S.nemeses=[];const byId=new Map();for(const n of S.nemeses)byId.set(n.id,n);for(const n of remote.nemeses){const e=byId.get(n.id);if(!e)byId.set(n.id,n);else{e.appearances=Math.max(e.appearances||0,n.appearances||0);e.maxOverdueDays=Math.max(e.maxOverdueDays||0,n.maxOverdueDays||0);if(n.slain&&!e.slain){e.slain=true;e.slainAt=n.slainAt;}}}S.nemeses=Array.from(byId.values());}
   // Merge recurring
@@ -796,6 +811,85 @@ const ICO={
   cal:'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="2" width="10" height="9" rx="1.5"/><line x1="1" y1="5" x2="11" y2="5"/><line x1="4" y1="1" x2="4" y2="3"/><line x1="8" y1="1" x2="8" y2="3"/></svg>',
 };
 
+// ═══════════════ NOTIFICATIONS ═══════════════
+const NOTIF_SUPPORT='Notification' in window;
+let swReg=null;
+// Dedup state — persisted to IndexedDB via cacheState
+let notifSent={morning:null,overdue:null,streak:null,idle:null};
+
+function notifPermission(){return NOTIF_SUPPORT?Notification.permission:'denied';}
+async function requestNotifPermission(){
+  if(!NOTIF_SUPPORT)return'denied';
+  const p=await Notification.requestPermission();
+  render();return p;
+}
+
+function showNotif(title,body,tag,data){
+  if(notifPermission()!=='granted')return;
+  const opts={body,icon:'./icon-192.png',badge:'./icon-192.png',tag,data:{url:'./',...data},renotify:true};
+  const fallback=()=>{try{const n=new Notification(title,{body,icon:'./icon-192.png',tag});n.onclick=()=>{window.focus();n.close();};}catch{}};
+  try{
+    if(swReg){swReg.showNotification(title,opts).catch(fallback);}
+    else{fallback();}
+  }catch{fallback();}
+}
+
+function checkNotifications(){
+  if(notifPermission()!=='granted'||currentView!=='app')return;
+  const snap=JSON.stringify(notifSent);
+  const now=new Date(),h=now.getHours(),m=now.getMinutes(),today=todayKey(),tasks=getTodayTasks();
+  const inc=tasks.filter(t=>!t.done);
+  const ws=S.settings.workStart,we=S.settings.workEnd;
+
+  // Morning briefing: at work start hour
+  if(S.settings.notifMorning&&h===ws&&m<16&&notifSent.morning!==today){
+    if(tasks.length>0){
+      notifSent.morning=today;
+      const overdue=inc.filter(t=>t.dueDate&&t.dueDate<today).length;
+      let body=`You have ${tasks.length} quest${tasks.length>1?'s':''} today.`;
+      if(overdue)body+=` ${overdue} overdue!`;
+      if(S.stats.currentStreak>0)body+=` 🔥 ${S.stats.currentStreak}-day streak on the line.`;
+      showNotif('Good morning, adventurer!',body,'morning');
+    }
+  }
+
+  // Overdue reminders: check at noon and 3pm
+  if(S.settings.notifOverdue&&(h===12||h===15)&&m<16){
+    const overdueKey=today+'-'+h;
+    if(notifSent.overdue!==overdueKey){
+      const overdue=inc.filter(t=>t.dueDate&&t.dueDate<today);
+      if(overdue.length>0){
+        notifSent.overdue=overdueKey;
+        showNotif(`${overdue.length} overdue quest${overdue.length>1?'s':''}`,
+          `${overdue.length} quest${overdue.length>1?'s':''} past due. Open Cadence to take action.`,'overdue');
+      }
+    }
+  }
+
+  // Streak protection: ~30 min before work end
+  if(S.settings.notifStreakProtect&&h===(we+23)%24&&m>=30&&m<46&&notifSent.streak!==today){
+    if(inc.length>0&&S.stats.currentStreak>0){
+      notifSent.streak=today;
+      showNotif('Streak in danger! 🔥',
+        `${inc.length} quest${inc.length>1?'s':''} left. Don't break your ${S.stats.currentStreak}-day streak!`,'streak');
+    }
+  }
+
+  // Idle nudge: during work hours, if no completion in 2+ hours
+  if(S.settings.notifIdleNudge&&h>=ws&&h<we&&inc.length>0){
+    const todayWorkStart=new Date(today+'T00:00:00');todayWorkStart.setHours(ws);
+    const baseline=Math.max(S.stats.lastComboTime||0,todayWorkStart.getTime());
+    const idleMs=Date.now()-baseline;
+    const idleHrs=idleMs/3600000;
+    if(idleHrs>=2&&notifSent.idle!==today+'-'+h){
+      notifSent.idle=today+'-'+h;
+      const msgs=['Time to get back in the game!','Your tasks miss you.','Quick win? Pick the easiest quest.','Even one task keeps the momentum going.'];
+      showNotif('Idle detected 👀',pickRandom(msgs)+` ${inc.length} quest${inc.length>1?'s':''} waiting.`,'idle');
+    }
+  }
+  if(JSON.stringify(notifSent)!==snap)dbSet('notifSent',notifSent);
+}
+
 // ═══════════════ EVENTS ═══════════════
 document.getElementById('app').addEventListener('click',e=>{const btn=e.target.closest('[data-action]');if(!btn)return;const{action,id,date}=btn.dataset;switch(action){
   case'toggle':toggleTask(date,id);break;case'delete':deleteTask(date,id);break;
@@ -815,6 +909,8 @@ document.getElementById('app').addEventListener('click',e=>{const btn=e.target.c
   case'change-folder':pickFolder();break;case'start-mobile':currentView='app';render();break;
   case'prestige':doPrestige();break;
   case'set-theme':{const tid=btn.dataset.theme;const t=THEMES.find(x=>x.id===tid);if(t&&isThemeUnlocked(t)){S.stats.theme=tid;applyTheme(tid);scheduleWrite();render();}break;}
+  case'notif-permission':requestNotifPermission();break;
+  case'notif-toggle':{const k=btn.dataset.key;if(typeof S.settings[k]==='boolean'){S.settings[k]=!S.settings[k];scheduleWrite();render();}break;}
   case'disconnect':dirHandle=null;S={tasks:{},settings:S.settings,stats:S.stats,nemeses:S.nemeses||[],recurring:S.recurring||[],lastSync:null};syncStatus='idle';currentView='setup';dbSet('dirHandle',null);render();break;
 }});
 
@@ -852,7 +948,8 @@ function render(){
   // Panels
   let settingsHTML='',achHTML='',analyticsHTML='';
   if(showSettings){const opts=sel=>Array.from({length:24},(_,i)=>`<option value="${i}" ${i===sel?'selected':''}>${fmt(i)}</option>`).join('');
-    settingsHTML=`<div class="sp"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:14px;font-weight:700;color:var(--tx)">⚙ Settings</span><button class="panel-close" data-action="settings">✕</button></div><div class="sr"><span class="slab">Work hours</span><div style="display:flex;align-items:center;gap:8px"><select class="sel" id="selStart">${opts(S.settings.workStart)}</select><span style="color:var(--mt);font-size:13px">to</span><select class="sel" id="selEnd">${opts(S.settings.workEnd)}</select></div></div><div class="sr"><span class="slab">Theme</span><div class="theme-grid">${THEMES.map(t=>{const unlocked=isThemeUnlocked(t),active=S.stats.theme===t.id;return`<div class="theme-swatch ${active?'active':''} ${unlocked?'':'locked'}" data-action="set-theme" data-theme="${t.id}" title="${t.name}${unlocked?'':' (Lv'+t.lvReq+(t.pReq?' P'+t.pReq:'')+')'}"><span>${t.icon}</span>${unlocked?'':`<span class="lock">🔒</span>`}</div>`;}).join('')}</div></div>${(S.recurring||[]).length?`<div class="sr" style="flex-direction:column;align-items:stretch"><span class="slab">Recurring Tasks</span><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">${S.recurring.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:6px;background:var(--sf);border:1px solid var(--bd)"><div style="min-width:0"><span style="font-size:12px;color:var(--tx2)">${esc(r.text)}</span><span class="recur-chip" style="margin-left:6px">${r.schedule}</span></div><button class="edit-btn danger" data-action="remove-recurring" data-recurid="${esc(r.id)}" style="padding:2px 8px;font-size:10px">✕</button></div>`).join('')}</div></div>`:''}<div class="sr"><span class="slab">Stats</span><span class="stat-sub">${S.stats.totalCompleted} completed · ${S.stats.achievements.length}/${ACHIEVEMENTS.length} achievements</span></div>${canPrestige?`<button class="prestige-btn" data-action="prestige">⭐ PRESTIGE${(S.stats.prestige||0)>0?' (×'+((S.stats.prestige||0)+1)+')':''}</button>`:''}<div class="sr"><span class="slab">Sync</span><div style="display:flex;gap:8px;flex-wrap:wrap">${hasFSAccess&&dirHandle?'<button class="file-btn" data-action="change-folder">📂 Change</button>':''}${isMobile?'<button class="file-btn" data-action="pick-file">📂 Load</button><button class="file-btn" data-action="save-file">💾 Save</button>':''}<button class="file-btn" data-action="disconnect" style="color:var(--red)">✕ Reset</button></div></div></div>`;}
+    settingsHTML=`<div class="sp"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:14px;font-weight:700;color:var(--tx)">⚙ Settings</span><button class="panel-close" data-action="settings">✕</button></div><div class="sr"><span class="slab">Work hours</span><div style="display:flex;align-items:center;gap:8px"><select class="sel" id="selStart">${opts(S.settings.workStart)}</select><span style="color:var(--mt);font-size:13px">to</span><select class="sel" id="selEnd">${opts(S.settings.workEnd)}</select></div></div><div class="sr"><span class="slab">Theme</span><div class="theme-grid">${THEMES.map(t=>{const unlocked=isThemeUnlocked(t),active=S.stats.theme===t.id;return`<div class="theme-swatch ${active?'active':''} ${unlocked?'':'locked'}" data-action="set-theme" data-theme="${t.id}" title="${t.name}${unlocked?'':' (Lv'+t.lvReq+(t.pReq?' P'+t.pReq:'')+')'}"><span>${t.icon}</span>${unlocked?'':`<span class="lock">🔒</span>`}</div>`;}).join('')}</div></div>${(S.recurring||[]).length?`<div class="sr" style="flex-direction:column;align-items:stretch"><span class="slab">Recurring Tasks</span><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">${S.recurring.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-radius:6px;background:var(--sf);border:1px solid var(--bd)"><div style="min-width:0"><span style="font-size:12px;color:var(--tx2)">${esc(r.text)}</span><span class="recur-chip" style="margin-left:6px">${r.schedule}</span></div><button class="edit-btn danger" data-action="remove-recurring" data-recurid="${esc(r.id)}" style="padding:2px 8px;font-size:10px">✕</button></div>`).join('')}</div></div>`:''}<div class="sr"><span class="slab">Stats</span><span class="stat-sub">${S.stats.totalCompleted} completed · ${S.stats.achievements.length}/${ACHIEVEMENTS.length} achievements</span></div>${NOTIF_SUPPORT?`<div class="sr" style="flex-direction:column;align-items:stretch"><span class="slab">Notifications</span><div style="margin-top:6px;display:flex;flex-direction:column;gap:6px">${notifPermission()==='granted'?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:11px;color:var(--green);font-weight:600">✓ Notifications enabled</span></div>`:notifPermission()==='denied'?`<button class="notif-btn denied" disabled>🚫 Blocked in browser settings</button><span style="font-size:10px;color:var(--ft);margin-top:2px">Re-enable in your browser's site settings</span>`:`<button class="notif-btn" data-action="notif-permission">🔔 Enable notifications</button>`}${notifPermission()==='granted'?`<button class="notif-toggle" role="switch" aria-checked="${S.settings.notifMorning}" data-action="notif-toggle" data-key="notifMorning"><div class="notif-info"><span class="notif-label">Morning briefing</span><span class="notif-desc">Daily summary at ${fmt(S.settings.workStart)}</span></div><div class="notif-switch${S.settings.notifMorning?' on':''}"></div></button><button class="notif-toggle" role="switch" aria-checked="${S.settings.notifOverdue}" data-action="notif-toggle" data-key="notifOverdue"><div class="notif-info"><span class="notif-label">Overdue reminders</span><span class="notif-desc">Nudge at noon &amp; 3 PM for overdue quests</span></div><div class="notif-switch${S.settings.notifOverdue?' on':''}"></div></button><button class="notif-toggle" role="switch" aria-checked="${S.settings.notifStreakProtect}" data-action="notif-toggle" data-key="notifStreakProtect"><div class="notif-info"><span class="notif-label">Streak protection</span><span class="notif-desc">Warning before work hours end</span></div><div class="notif-switch${S.settings.notifStreakProtect?' on':''}"></div></button><button class="notif-toggle" role="switch" aria-checked="${S.settings.notifIdleNudge}" data-action="notif-toggle" data-key="notifIdleNudge"><div class="notif-info"><span class="notif-label">Idle nudge</span><span class="notif-desc">Reminder after 2h without completing a task</span></div><div class="notif-switch${S.settings.notifIdleNudge?' on':''}"></div></button>`:''}</div></div>`:''}\
+${canPrestige?`<button class="prestige-btn" data-action="prestige">⭐ PRESTIGE${(S.stats.prestige||0)>0?' (×'+((S.stats.prestige||0)+1)+')':''}</button>`:''}<div class="sr"><span class="slab">Sync</span><div style="display:flex;gap:8px;flex-wrap:wrap">${hasFSAccess&&dirHandle?'<button class="file-btn" data-action="change-folder">📂 Change</button>':''}${isMobile?'<button class="file-btn" data-action="pick-file">📂 Load</button><button class="file-btn" data-action="save-file">💾 Save</button>':''}<button class="file-btn" data-action="disconnect" style="color:var(--red)">✕ Reset</button></div></div></div>`;}
   if(showAchievements){achHTML=`<div class="panel"><div class="panel-title"><span>🏆 Achievements <span style="font-size:12px;color:var(--dm);font-family:'JetBrains Mono',monospace;font-weight:400">${S.stats.achievements.length}/${ACHIEVEMENTS.length}</span></span><button class="panel-close" data-action="achievements">✕</button></div><div class="ach-grid">${ACHIEVEMENTS.map(a=>`<div class="ach ${S.stats.achievements.includes(a.id)?'':'locked'}"><span class="ach-icon">${a.icon}</span><div><span class="ach-name">${esc(a.name)}</span><br><span class="ach-desc">${esc(a.desc)}</span></div></div>`).join('')}</div></div>`;}
   if(showAnalytics){
     const a=computeAnalytics();const insights=generateInsights(a);
@@ -927,10 +1024,10 @@ window.addEventListener('beforeunload',e=>{if(isMobile&&unsavedEdits>0){e.preven
   if(S.stats.lastCompletionDay){const d=Math.floor((new Date()-new Date(S.stats.lastCompletionDay+'T12:00:00'))/86400000);if(d>1)S.stats.currentStreak=0;}
   const tasks=getTodayTasks();bossDefeatedToday=tasks.length>0&&tasks.every(t=>t.done)&&isBossDay();
   // Service worker
-  if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').then(r=>{swReg=r;}).catch(()=>{});}
   if(hasFSAccess){const r=await dbGet('dirHandle');if(r){try{if((await r.queryPermission({mode:'readwrite'}))==='granted'){dirHandle=r;currentView='app';render();await readFromFile();render();return;}}catch{}dirHandle=r;currentView='app';render();return;}currentView='setup';render();}else{currentView=hadCache?'app':'setup';render();}
 })();
-setInterval(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();},15000);
+setInterval(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();if(!document.hidden)checkNotifications();},15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&dirHandle)readFromFile().then(()=>{if(!document.activeElement||!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))render();});});
 </script>
 </body>
